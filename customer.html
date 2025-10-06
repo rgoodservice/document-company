@@ -8,7 +8,8 @@
 <link href="https://fonts.googleapis.com/css2?family=Prompt:wght@400;600;700&display=swap" rel="stylesheet">
 <style>
   :root{
-    --bg:#0f172a;--card:#1f2937;--text:#e5e7eb;--muted:#94a3b8;--accent:#22d3ee;--ok:#10b981;--warn:#f59e0b;--err:#ef4444;--border:#374151
+    --bg:#0f172a;--card:#1f2937;--text:#e5e7eb;--muted:#94a3b8;--accent:#22d3ee;
+    --ok:#10b981;--warn:#f59e0b;--err:#ef4444;--border:#374151
   }
   *{box-sizing:border-box}
   body{margin:0;background:var(--bg);color:var(--text);font-family:'Prompt',system-ui}
@@ -37,7 +38,7 @@
   <h1>ข้อมูลใบอนุญาตของบริษัทคุณ</h1>
   <p class="muted" id="companyInfo">กำลังโหลด...</p>
 
-  <!-- แถบค้นหา/กรอง (ฝั่งลูกค้า) -->
+  <!-- แถบค้นหา/กรอง -->
   <div class="card" style="margin-top:12px">
     <div class="toolbar">
       <div>
@@ -75,17 +76,14 @@
 </div>
 
 <script>
-  // ===== CONFIG =====
-  const SUPABASE_URL = "https://velbtupsfspvfqhytaci.supabase.co";  // <-- ใส่ของคุณ
-  const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZlbGJ0dXBzZnNwdmZxaHl0YWNpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTkxNDYyMjQsImV4cCI6MjA3NDcyMjIyNH0.ZVGvKh1ytyKUFH4b8T4ItVPXpFPSI57DXhuy89uVxKk";                // <-- ใส่ของคุณ
+  const SUPABASE_URL = "https://velbtupsfspvfqhytaci.supabase.co";
+  const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZlbGJ0dXBzZnNwdmZxaHl0YWNpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTkxNDYyMjQsImV4cCI6MjA3NDcyMjIyNH0.ZVGvKh1ytyKUFH4b8T4ItVPXpFPSI57DXhuy89uVxKk";
   const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
   const OA_HANDLE = "@991cyisb";
 
-  // ===== Query Param =====
   const params = new URLSearchParams(location.search);
   const COMPANY_CODE = (params.get('company')||'').trim();
 
-  // ===== DOM =====
   const companyInfo = document.getElementById('companyInfo');
   const listArea = document.getElementById('listArea');
   const searchText = document.getElementById('searchText');
@@ -95,111 +93,55 @@
   const btnRefresh = document.getElementById('btnRefresh');
   const btnCopyContact = document.getElementById('btnCopyContact');
 
-  // ===== Helpers =====
   function badgeClass(s){ return ({active:'b-active',expiring:'b-expiring',expired:'b-expired',renewed:'b-renewed'}[s]||''); }
-  function daysLeft(to){
-    if(!to) return null;
-    const t = new Date(); t.setHours(0,0,0,0);
-    const d = new Date(to); if(isNaN(d)) return null; d.setHours(0,0,0,0);
-    return Math.floor((d-t)/(1000*60*60*24));
-  }
-  function derivedStatus(rec){
-    // ลูกค้าดูแบบอนุมาน (ไม่สน suspended/pending)
-    const d = daysLeft(rec.valid_to);
-    if(d===null) return rec.status||'active';
-    if(d<0) return 'expired';
-    if(d<=30) return 'expiring';
-    return rec.status||'active';
-  }
-  function thaiDate(str){
-    if(!str) return '-';
-    const d=new Date(str+'T00:00:00'); if(isNaN(d)) return str;
-    return d.toLocaleDateString('th-TH',{year:'numeric',month:'short',day:'numeric'});
-  }
-  async function copy(text){
-    try{ await navigator.clipboard.writeText(text); alert('คัดลอกแล้ว'); }
-    catch{ const ta=document.createElement('textarea'); ta.value=text; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); ta.remove(); alert('คัดลอกแล้ว'); }
-  }
+  function daysLeft(to){ if(!to)return null;const t=new Date();t.setHours(0,0,0,0);const d=new Date(to);if(isNaN(d))return null;d.setHours(0,0,0,0);return Math.floor((d-t)/(1000*60*60*24)); }
+  function derivedStatus(rec){ const d=daysLeft(rec.valid_to);if(d===null)return rec.status||'active';if(d<0)return'expired';if(d<=30)return'expiring';return rec.status||'active'; }
+  function thaiDate(str){ if(!str)return'-';const d=new Date(str+'T00:00:00');if(isNaN(d))return str;return d.toLocaleDateString('th-TH',{year:'numeric',month:'short',day:'numeric'}); }
+  async function copy(text){try{await navigator.clipboard.writeText(text);alert('คัดลอกแล้ว');}catch{const ta=document.createElement('textarea');ta.value=text;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();alert('คัดลอกแล้ว');}}
 
-  // ===== Data Load =====
-  if(!COMPANY_CODE){
-    companyInfo.innerHTML = 'กรุณาเปิดผ่าน <b>index.html</b> หรือใส่พารามิเตอร์ <span class="tag">?company=รหัสบริษัท</span>';
-  }
-
-  let company = null;
-  let licenses = [];
-  let items = [];
-
+  let company=null,licenses=[],items=[];
   async function loadData(){
-    if(!COMPANY_CODE) return;
-    companyInfo.textContent = 'กำลังโหลด...';
-
+    if(!COMPANY_CODE){ companyInfo.innerHTML='กรุณาเปิดผ่าน <b>index.html</b> หรือใส่พารามิเตอร์ <span class="tag">?company=รหัสบริษัท</span>';return;}
+    companyInfo.textContent='กำลังโหลด...';
     const [{data:comps,error:cErr},{data:lic,error:lErr},{data:its,error:iErr}] = await Promise.all([
-      sb.from('companies').select('*').eq('code', COMPANY_CODE).maybeSingle(),
-      sb.from('licenses').select('*').eq('company_code', COMPANY_CODE),
-      // ดึงทุก items ของบริษัทนี้ครั้งเดียว
-      sb.rpc('exec_sql',{sql:`
-        select li.* from license_items li
-        join licenses l on l.id = li.license_id
-        where l.company_code = '${COMPANY_CODE.replace(/'/g,"''")}'
-      `}).catch(()=>({data:[],error:null}))
+      sb.from('companies').select('*').eq('code',COMPANY_CODE).maybeSingle(),
+      sb.from('licenses').select('*').eq('company_code',COMPANY_CODE),
+      sb.from('license_items').select('*')
     ]);
-
-    if(cErr){ companyInfo.textContent = 'โหลดข้อมูลบริษัทผิดพลาด'; return; }
-    company = comps;
-    licenses = lic || [];
-    items = (its && its.data) ? its.data : [];
-
-    if(!company){ companyInfo.innerHTML = `ไม่พบบริษัท <b>${COMPANY_CODE}</b>`; return; }
-    companyInfo.innerHTML = `<b>${company.name}</b> <span class="muted">(${company.code})</span> — ลูกค้าอ่านอย่างเดียว`;
-
+    if(cErr){companyInfo.textContent='โหลดข้อมูลบริษัทผิดพลาด';return;}
+    company=comps;licenses=lic||[];items=its||[];
+    if(!company){companyInfo.innerHTML=`ไม่พบบริษัท <b>${COMPANY_CODE}</b>`;return;}
+    companyInfo.innerHTML=`<b>${company.name}</b> <span class="muted">(${company.code})</span> — ลูกค้าอ่านอย่างเดียว`;
     render();
   }
 
   function render(){
-    const itemsByLic = {};
-    for(const it of items) (itemsByLic[it.license_id] ||= []).push(it);
+    const itemsByLic={};for(const it of items)(itemsByLic[it.license_id] ||= []).push(it);
+    let rows=licenses.map(l=>({...l,_items:itemsByLic[l.id]||[],_status:derivedStatus(l)}));
+    const q=(searchText.value||'').trim().toLowerCase();
+    if(q){rows=rows.filter(r=>{const me=`${r.license_no} ${r.note||''}`.toLowerCase();const itm=r._items.map(it=>`${it.trade_name||''} ${it.common_name||''} ${it.registration_no||''}`).join(' ').toLowerCase();return me.includes(q)||itm.includes(q);});}
+    if(expSoon.value){const limit=parseInt(expSoon.value,10);rows=rows.filter(r=>{const d=daysLeft(r.valid_to);return d!==null&&d>=0&&d<=limit&&r._status!=='renewed';});}
+    if(validToFrom.value)rows=rows.filter(r=>r.valid_to&&r.valid_to>=validToFrom.value);
+    if(validToTo.value)rows=rows.filter(r=>r.valid_to&&r.valid_to<=validToTo.value);
 
-    // กรอง
-    let rows = licenses.map(l => ({...l, _items: itemsByLic[l.id]||[], _status: derivedStatus(l)}));
-
-    const q = (searchText.value||'').trim().toLowerCase();
-    if(q){
-      rows = rows.filter(r=>{
-        const me = `${r.license_no} ${r.note||''}`.toLowerCase();
-        const itm = r._items.map(it=>`${it.trade_name||''} ${it.common_name||''} ${it.registration_no||''}`).join(' ').toLowerCase();
-        return me.includes(q) || itm.includes(q);
-      });
-    }
-    if(expSoon.value){
-      const limit = parseInt(expSoon.value,10);
-      rows = rows.filter(r=>{
-        const d = daysLeft(r.valid_to);
-        return d!==null && d>=0 && d<=limit && r._status!=='renewed';
-      });
-    }
-    if(validToFrom.value) rows = rows.filter(r=> r.valid_to && r.valid_to >= validToFrom.value);
-    if(validToTo.value) rows = rows.filter(r=> r.valid_to && r.valid_to <= validToTo.value);
-
-    // วาด
     listArea.innerHTML='';
-    if(rows.length===0){ listArea.innerHTML = '<span class="muted">— ไม่พบรายการตามเงื่อนไข —</span>'; return; }
+    if(rows.length===0){listArea.innerHTML='<span class="muted">— ไม่พบรายการตามเงื่อนไข —</span>';return;}
 
     for(const lic of rows){
-      const box = document.createElement('div');
-      box.className='items';
-      const dleft = daysLeft(lic.valid_to);
-      const dtext = dleft==null ? '' : `<span class="tag">D-${dleft>=0?dleft:('+'+Math.abs(dleft))}</span>`;
-      const hint = (()=>{
-        if(dleft==null) return '';
-        if(dleft<0) return `<span class="badge b-expired">หมดอายุมานาน ${Math.abs(dleft)} วัน</span>`;
-        if(dleft===0) return `<span class="badge b-expiring">หมดอายุวันนี้</span>`;
-        if(dleft<=30 && lic._status!=='renewed') return `<span class="badge b-expiring">ใกล้หมดอายุใน ${dleft} วัน</span>`;
-        return '';
+      const box=document.createElement('div');box.className='items';
+      const dleft=daysLeft(lic.valid_to);
+      const dtext=dleft==null?'':`<span class="tag">D-${dleft>=0?dleft:('+'+Math.abs(dleft))}</span>`;
+      const hint=(()=>{
+        if(dleft==null)return'';
+        if(dleft<0)return`<span class="badge b-expired">หมดอายุมานาน ${Math.abs(dleft)} วัน</span>`;
+        if(dleft===0)return`<span class="badge b-expiring">หมดอายุวันนี้</span>`;
+        if(dleft<=30&&lic._status!=='renewed')return`<span class="badge b-expiring">ใกล้หมดอายุใน ${dleft} วัน</span>`;
+        return'';
       })();
 
-      box.innerHTML = `
+      box.innerHTML=`
         <div class="line">
+          <b>ชื่อบริษัท:</b> ${company.name} <span class="muted">(${company.code})</span><br>
           <b>เลขที่ใบอนุญาต:</b> ${lic.license_no}
           <span class="badge ${badgeClass(lic._status)}">${lic._status}</span>
           ${dtext} ${hint}
@@ -208,36 +150,31 @@
           ${lic.renewed_at?`<div class="muted">ต่อครั้งล่าสุด: <b>${lic.renewed_at}</b></div>`:''}
           ${lic.note?`<div class="muted">หมายเหตุ: ${lic.note}</div>`:''}
         </div>
+        ${lic.status_note ? `<div class="muted" style="margin-top:8px"><b>📌 หมายเหตุเพิ่มเติมจากผู้ดูแล:</b> ${lic.status_note}</div>` : ''}
       `;
 
-      // แสดงรายการชื่อการค้า/สามัญ/ทะเบียนเลขที่
       if(lic._items.length===0){
-        const none=document.createElement('div'); none.className='muted'; none.style.padding='6px 0';
-        none.textContent='— ยังไม่มีรายการชื่อการค้า/สามัญ/ทะเบียนเลขที่ —';
-        box.appendChild(none);
+        const none=document.createElement('div');none.className='muted';none.style.padding='6px 0';none.textContent='— ยังไม่มีรายการชื่อการค้า/สามัญ/ทะเบียนเลขที่ —';box.appendChild(none);
       }else{
         for(const it of lic._items){
-          const line=document.createElement('div'); line.style.padding='6px 0';
-          line.innerHTML = `
+          const line=document.createElement('div');line.style.padding='6px 0';
+          line.innerHTML=`
             <div>
               <span class="tag"><b>ชื่อการค้า</b>: ${it.trade_name||'-'}</span>
               <span class="tag"><b>ชื่อสามัญ</b>: ${it.common_name||'-'}</span>
               <span class="tag"><b>ทะเบียนเลขที่</b>: ${it.registration_no||'-'}</span>
-            </div>
-          `;
+            </div>`;
           box.appendChild(line);
         }
       }
-
       listArea.appendChild(box);
     }
   }
 
-  // ปุ่มคัดลอก “ข้อความติดต่อกลับ”
-  btnCopyContact.addEventListener('click', ()=>{
-    const msg = [
+  btnCopyContact.addEventListener('click',()=>{
+    const msg=[
       `เรียนทีมงาน`,
-      company ? `บริษัท: ${company.name} (${company.code})` : `บริษัท: -`,
+      company?`บริษัท: ${company.name} (${company.code})`:`บริษัท: -`,
       `ขอสอบถาม/แจ้งเรื่องการต่ออายุใบอนุญาต`,
       ``,
       `ติดต่อกลับทาง LINE OA: ${OA_HANDLE}`
@@ -245,12 +182,11 @@
     copy(msg);
   });
 
-  btnRefresh.addEventListener('click', loadData);
-  searchText.addEventListener('input', render);
-  expSoon.addEventListener('change', render);
-  validToFrom.addEventListener('change', render);
-  validToTo.addEventListener('change', render);
-
+  btnRefresh.addEventListener('click',loadData);
+  searchText.addEventListener('input',render);
+  expSoon.addEventListener('change',render);
+  validToFrom.addEventListener('change',render);
+  validToTo.addEventListener('change',render);
   loadData();
 </script>
 </body>
