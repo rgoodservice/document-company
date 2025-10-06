@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>License Portal — ลูกค้า (อ่านอย่างเดียว)</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<link href="https://fonts.googleapis.com/css2?family=Prompt:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#0f172a;--card:#1f2937;--text:#e5e7eb;--muted:#94a3b8;--accent:#22d3ee;--ok:#10b981;--warn:#f59e0b;--err:#ef4444;--border:#374151
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);font-family:'Prompt',system-ui}
+  .wrap{max-width:1100px;margin:32px auto;padding:0 16px}
+  h1{margin:0 0 8px}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:16px;padding:16px}
+  .muted{color:var(--muted)}
+  .grid{display:grid;gap:12px}
+  .toolbar{display:flex;gap:8px;flex-wrap:wrap;align-items:end}
+  input,select{padding:10px 12px;border-radius:12px;border:1px solid var(--border);background:#111827;color:var(--text)}
+  .tag{padding:4px 8px;border:1px solid var(--border);border-radius:999px;font-size:12px;color:var(--muted)}
+  .badge{padding:4px 10px;border-radius:999px;font-size:12px;font-weight:700;display:inline-block}
+  .b-active{background:rgba(16,185,129,.15);color:#34d399}
+  .b-expiring{background:rgba(245,158,11,.15);color:#fbbf24}
+  .b-expired{background:rgba(239,68,68,.15);color:#f87171}
+  .b-renewed{background:rgba(96,165,250,.15);color:#93c5fd}
+  .items{border-left:2px solid var(--border);margin-left:6px;padding-left:12px}
+  .line{padding:6px 0;border-bottom:1px dashed var(--border)}
+  .btn{padding:10px 14px;border-radius:12px;border:1px solid var(--border);background:#0b1220;color:var(--text);cursor:pointer}
+  .btn:hover{opacity:.9}
+  .btn-accent{background:var(--accent);color:#0b1220;border:none;font-weight:700}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>ข้อมูลใบอนุญาตของบริษัทคุณ</h1>
+  <p class="muted" id="companyInfo">กำลังโหลด...</p>
+
+  <!-- แถบค้นหา/กรอง (ฝั่งลูกค้า) -->
+  <div class="card" style="margin-top:12px">
+    <div class="toolbar">
+      <div>
+        <label class="muted">ค้นหา</label><br/>
+        <input id="searchText" placeholder="ชื่อการค้า/สามัญ/ทะเบียน/เลขที่ใบอนุญาต"/>
+      </div>
+      <div>
+        <label class="muted">ใกล้หมดอายุใน (วัน)</label><br/>
+        <select id="expSoon">
+          <option value="">— ทั้งหมด —</option>
+          <option value="30">≤ 30 วัน</option>
+          <option value="60">≤ 60 วัน</option>
+          <option value="90">≤ 90 วัน</option>
+        </select>
+      </div>
+      <div>
+        <label class="muted">ช่วงวันหมดอายุ</label><br/>
+        <input id="validToFrom" type="date" style="width:170px"/>
+        <input id="validToTo" type="date" style="width:170px"/>
+      </div>
+      <div style="margin-left:auto;display:flex;gap:8px">
+        <button class="btn" id="btnRefresh">รีเฟรช</button>
+        <button class="btn btn-accent" id="btnCopyContact">คัดลอกข้อความติดต่อกลับ</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- รายการ -->
+  <div class="card" style="margin-top:12px">
+    <h3 style="margin:0 0 8px">รายการใบอนุญาต</h3>
+    <div id="listArea" class="grid"></div>
+  </div>
+
+  <p class="muted" style="margin-top:12px">ต้องการติดต่อด่วน LINE OA: <b>@991cyisb</b></p>
+</div>
+
+<script>
+  // ===== CONFIG =====
+  const SUPABASE_URL = "https://YOUR-PROJECT.supabase.co";  // <-- ใส่ของคุณ
+  const SUPABASE_ANON_KEY = "YOUR-ANON-KEY";                // <-- ใส่ของคุณ
+  const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+  const OA_HANDLE = "@991cyisb";
+
+  // ===== Query Param =====
+  const params = new URLSearchParams(location.search);
+  const COMPANY_CODE = (params.get('company')||'').trim();
+
+  // ===== DOM =====
+  const companyInfo = document.getElementById('companyInfo');
+  const listArea = document.getElementById('listArea');
+  const searchText = document.getElementById('searchText');
+  const expSoon = document.getElementById('expSoon');
+  const validToFrom = document.getElementById('validToFrom');
+  const validToTo = document.getElementById('validToTo');
+  const btnRefresh = document.getElementById('btnRefresh');
+  const btnCopyContact = document.getElementById('btnCopyContact');
+
+  // ===== Helpers =====
+  function badgeClass(s){ return ({active:'b-active',expiring:'b-expiring',expired:'b-expired',renewed:'b-renewed'}[s]||''); }
+  function daysLeft(to){
+    if(!to) return null;
+    const t = new Date(); t.setHours(0,0,0,0);
+    const d = new Date(to); if(isNaN(d)) return null; d.setHours(0,0,0,0);
+    return Math.floor((d-t)/(1000*60*60*24));
+  }
+  function derivedStatus(rec){
+    // ลูกค้าดูแบบอนุมาน (ไม่สน suspended/pending)
+    const d = daysLeft(rec.valid_to);
+    if(d===null) return rec.status||'active';
+    if(d<0) return 'expired';
+    if(d<=30) return 'expiring';
+    return rec.status||'active';
+  }
+  function thaiDate(str){
+    if(!str) return '-';
+    const d=new Date(str+'T00:00:00'); if(isNaN(d)) return str;
+    return d.toLocaleDateString('th-TH',{year:'numeric',month:'short',day:'numeric'});
+  }
+  async function copy(text){
+    try{ await navigator.clipboard.writeText(text); alert('คัดลอกแล้ว'); }
+    catch{ const ta=document.createElement('textarea'); ta.value=text; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); ta.remove(); alert('คัดลอกแล้ว'); }
+  }
+
+  // ===== Data Load =====
+  if(!COMPANY_CODE){
+    companyInfo.innerHTML = 'กรุณาเปิดผ่าน <b>index.html</b> หรือใส่พารามิเตอร์ <span class="tag">?company=รหัสบริษัท</span>';
+  }
+
+  let company = null;
+  let licenses = [];
+  let items = [];
+
+  async function loadData(){
+    if(!COMPANY_CODE) return;
+    companyInfo.textContent = 'กำลังโหลด...';
+
+    const [{data:comps,error:cErr},{data:lic,error:lErr},{data:its,error:iErr}] = await Promise.all([
+      sb.from('companies').select('*').eq('code', COMPANY_CODE).maybeSingle(),
+      sb.from('licenses').select('*').eq('company_code', COMPANY_CODE),
+      // ดึงทุก items ของบริษัทนี้ครั้งเดียว
+      sb.rpc('exec_sql',{sql:`
+        select li.* from license_items li
+        join licenses l on l.id = li.license_id
+        where l.company_code = '${COMPANY_CODE.replace(/'/g,"''")}'
+      `}).catch(()=>({data:[],error:null}))
+    ]);
+
+    if(cErr){ companyInfo.textContent = 'โหลดข้อมูลบริษัทผิดพลาด'; return; }
+    company = comps;
+    licenses = lic || [];
+    items = (its && its.data) ? its.data : [];
+
+    if(!company){ companyInfo.innerHTML = `ไม่พบบริษัท <b>${COMPANY_CODE}</b>`; return; }
+    companyInfo.innerHTML = `<b>${company.name}</b> <span class="muted">(${company.code})</span> — ลูกค้าอ่านอย่างเดียว`;
+
+    render();
+  }
+
+  function render(){
+    const itemsByLic = {};
+    for(const it of items) (itemsByLic[it.license_id] ||= []).push(it);
+
+    // กรอง
+    let rows = licenses.map(l => ({...l, _items: itemsByLic[l.id]||[], _status: derivedStatus(l)}));
+
+    const q = (searchText.value||'').trim().toLowerCase();
+    if(q){
+      rows = rows.filter(r=>{
+        const me = `${r.license_no} ${r.note||''}`.toLowerCase();
+        const itm = r._items.map(it=>`${it.trade_name||''} ${it.common_name||''} ${it.registration_no||''}`).join(' ').toLowerCase();
+        return me.includes(q) || itm.includes(q);
+      });
+    }
+    if(expSoon.value){
+      const limit = parseInt(expSoon.value,10);
+      rows = rows.filter(r=>{
+        const d = daysLeft(r.valid_to);
+        return d!==null && d>=0 && d<=limit && r._status!=='renewed';
+      });
+    }
+    if(validToFrom.value) rows = rows.filter(r=> r.valid_to && r.valid_to >= validToFrom.value);
+    if(validToTo.value) rows = rows.filter(r=> r.valid_to && r.valid_to <= validToTo.value);
+
+    // วาด
+    listArea.innerHTML='';
+    if(rows.length===0){ listArea.innerHTML = '<span class="muted">— ไม่พบรายการตามเงื่อนไข —</span>'; return; }
+
+    for(const lic of rows){
+      const box = document.createElement('div');
+      box.className='items';
+      const dleft = daysLeft(lic.valid_to);
+      const dtext = dleft==null ? '' : `<span class="tag">D-${dleft>=0?dleft:('+'+Math.abs(dleft))}</span>`;
+      const hint = (()=>{
+        if(dleft==null) return '';
+        if(dleft<0) return `<span class="badge b-expired">หมดอายุมานาน ${Math.abs(dleft)} วัน</span>`;
+        if(dleft===0) return `<span class="badge b-expiring">หมดอายุวันนี้</span>`;
+        if(dleft<=30 && lic._status!=='renewed') return `<span class="badge b-expiring">ใกล้หมดอายุใน ${dleft} วัน</span>`;
+        return '';
+      })();
+
+      box.innerHTML = `
+        <div class="line">
+          <b>เลขที่ใบอนุญาต:</b> ${lic.license_no}
+          <span class="badge ${badgeClass(lic._status)}">${lic._status}</span>
+          ${dtext} ${hint}
+          ${lic.valid_from?`<span class="tag">ตั้งแต่ ${lic.valid_from}</span>`:''}
+          ${lic.valid_to?`<span class="tag">ถึง ${lic.valid_to}</span>`:''}
+          ${lic.renewed_at?`<div class="muted">ต่อครั้งล่าสุด: <b>${lic.renewed_at}</b></div>`:''}
+          ${lic.note?`<div class="muted">หมายเหตุ: ${lic.note}</div>`:''}
+        </div>
+      `;
+
+      // แสดงรายการชื่อการค้า/สามัญ/ทะเบียนเลขที่
+      if(lic._items.length===0){
+        const none=document.createElement('div'); none.className='muted'; none.style.padding='6px 0';
+        none.textContent='— ยังไม่มีรายการชื่อการค้า/สามัญ/ทะเบียนเลขที่ —';
+        box.appendChild(none);
+      }else{
+        for(const it of lic._items){
+          const line=document.createElement('div'); line.style.padding='6px 0';
+          line.innerHTML = `
+            <div>
+              <span class="tag"><b>ชื่อการค้า</b>: ${it.trade_name||'-'}</span>
+              <span class="tag"><b>ชื่อสามัญ</b>: ${it.common_name||'-'}</span>
+              <span class="tag"><b>ทะเบียนเลขที่</b>: ${it.registration_no||'-'}</span>
+            </div>
+          `;
+          box.appendChild(line);
+        }
+      }
+
+      listArea.appendChild(box);
+    }
+  }
+
+  // ปุ่มคัดลอก “ข้อความติดต่อกลับ”
+  btnCopyContact.addEventListener('click', ()=>{
+    const msg = [
+      `เรียนทีมงาน`,
+      company ? `บริษัท: ${company.name} (${company.code})` : `บริษัท: -`,
+      `ขอสอบถาม/แจ้งเรื่องการต่ออายุใบอนุญาต`,
+      ``,
+      `ติดต่อกลับทาง LINE OA: ${OA_HANDLE}`
+    ].join('\n');
+    copy(msg);
+  });
+
+  btnRefresh.addEventListener('click', loadData);
+  searchText.addEventListener('input', render);
+  expSoon.addEventListener('change', render);
+  validToFrom.addEventListener('change', render);
+  validToTo.addEventListener('change', render);
+
+  loadData();
+</script>
+</body>
+</html>
