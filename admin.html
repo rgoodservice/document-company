@@ -247,31 +247,56 @@
 </div>
 
 <script>
-  // ===== Supabase Config (ประกาศครั้งเดียว) =====
-  const SUPABASE_URL = "https://velbtupsfspvfqhytaci.supabase.co";
-  const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZlbGJ0dXBzZnNwdmZxaHl0YWNpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTkxNDYyMjQsImV4cCI6MjA3NDcyMjIyNH0.ZVGvKh1ytyKUFH4b8T4ItVPXpFPSI57DXhuy89uVxKk";
-  const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+// ---- Supabase client ----
+const SUPABASE_URL = "https://velbtupsfspvfqhytaci.supabase.co";
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZlbGJ0dXBzZnNwdmZxaHl0YWNpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTkxNDYyMjQsImV4cCI6MjA3NDcyMjIyNH0.ZVGvKh1ytyKUFH4b8T4ItVPXpFPSI57DXhuy89uVxKk";
+const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-  // ===== เช็คล็อกอินที่ถูกต้อง (ไม่ใช้ token เอง) =====
-  async function checkLogin() {
-    const { data: { user }, error } = await sb.auth.getUser(); // อ่าน session ที่ lib เก็บเอง
-    if (error || !user) {
-      alert("กรุณาเข้าสู่ระบบก่อนค่ะ");
-      location.href = "login.html";
-      return false;
-    }
-    // (ถ้าจะล็อกเฉพาะบางอีเมล ให้ใส่ไว้ที่นี่)
-    const adminEmails = ["kiranapat44@gmail.com","rgoodservice84@gmail.com"]; // <- แก้เป็นอีเมลที่อนุญาต
-    if (adminEmails.length && !adminEmails.includes(user.email)) {
-      alert("คุณไม่มีสิทธิ์เข้าใช้งานหน้านี้");
-      await sb.auth.signOut();
-      location.href = "login.html";
-      return false;
-    }
-    console.log("✅ เข้าสู่ระบบแล้ว:", user.email);
-    return true;
+// ---- ตรวจสิทธิ์แอดมินจากฐานข้อมูล ----
+async function checkAdminAccess(){
+  // 1) ต้องล็อกอินก่อน
+  const { data: u, error: e1 } = await sb.auth.getUser();
+  if (e1 || !u?.user) {
+    alert("กรุณาเข้าสู่ระบบก่อน");
+    location.href = "login.html";
+    return false;
+  }
+  const email = (u.user.email || "").toLowerCase();
+
+  // 2) เช็คว่าอยู่ในตาราง admins ไหม
+  const { data: rec, error: e2 } = await sb
+    .from("admins")
+    .select("email, role")
+    .eq("email", email)
+    .maybeSingle();
+
+  if (e2) {
+    console.error(e2);
+    alert("ตรวจสิทธิ์ไม่สำเร็จ");
+    await sb.auth.signOut();
+    location.href = "login.html";
+    return false;
   }
 
+  if (!rec) {
+    alert("คุณไม่มีสิทธิเข้าใช้งานหน้านี้");
+    await sb.auth.signOut();
+    location.href = "login.html";
+    return false;
+  }
+
+  console.log("✅ Admin OK:", email, "role:", rec.role);
+  return true;
+}
+
+// เรียกใช้ก่อนทำอย่างอื่นในหน้า
+(async ()=>{
+  const ok = await checkAdminAccess();
+  if (!ok) return;  // ถูกเด้งออกไปแล้ว
+  // ... โค้ดโหลดข้อมูล/เรนเดอร์ของ admin เดิมของคุณต่อไป ...
+})();
+</script>
+<script>
   // ===== LINE OA / Proxy (ตัวเลือก) =====
   const OA_HANDLE = "@991cyisb";
   const OA_QR_URL = "";
