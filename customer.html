@@ -31,6 +31,8 @@
   .btn{padding:10px 14px;border-radius:12px;border:1px solid var(--border);background:#0b1220;color:var(--text);cursor:pointer}
   .btn:hover{opacity:.9}
   .btn-accent{background:var(--accent);color:#0b1220;border:none;font-weight:700}
+  .btn-line{background:#06c755;color:#fff;border:none;font-weight:700}
+  .btn-line:hover{opacity:.9}
 </style>
 </head>
 <body>
@@ -72,7 +74,7 @@
     <div id="listArea" class="grid"></div>
   </div>
 
-  <p class="muted" style="margin-top:12px">ต้องการติดต่อด่วน LINE OA: <b>@991cyisb</b></p>
+  <p class="muted" style="margin-top:12px">ติดต่อด่วน LINE OA: <b>@991cyisb</b></p>
 </div>
 
 <script>
@@ -80,6 +82,7 @@
   const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZlbGJ0dXBzZnNwdmZxaHl0YWNpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTkxNDYyMjQsImV4cCI6MjA3NDcyMjIyNH0.ZVGvKh1ytyKUFH4b8T4ItVPXpFPSI57DXhuy89uVxKk";
   const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
   const OA_HANDLE = "@991cyisb";
+  const OA_URL = "https://line.me/R/ti/p/@991cyisb";
 
   const params = new URLSearchParams(location.search);
   const COMPANY_CODE = (params.get('company')||'').trim();
@@ -93,22 +96,21 @@
   const btnRefresh = document.getElementById('btnRefresh');
   const btnCopyContact = document.getElementById('btnCopyContact');
 
-  function badgeClass(s){ return ({active:'b-active',expiring:'b-expiring',expired:'b-expired',renewed:'b-renewed'}[s]||''); }
-  function daysLeft(to){ if(!to)return null;const t=new Date();t.setHours(0,0,0,0);const d=new Date(to);if(isNaN(d))return null;d.setHours(0,0,0,0);return Math.floor((d-t)/(1000*60*60*24)); }
-  function derivedStatus(rec){ const d=daysLeft(rec.valid_to);if(d===null)return rec.status||'active';if(d<0)return'expired';if(d<=30)return'expiring';return rec.status||'active'; }
-  function thaiDate(str){ if(!str)return'-';const d=new Date(str+'T00:00:00');if(isNaN(d))return str;return d.toLocaleDateString('th-TH',{year:'numeric',month:'short',day:'numeric'}); }
+  function badgeClass(s){return({active:'b-active',expiring:'b-expiring',expired:'b-expired',renewed:'b-renewed'}[s]||'');}
+  function daysLeft(to){if(!to)return null;const t=new Date();t.setHours(0,0,0,0);const d=new Date(to);if(isNaN(d))return null;d.setHours(0,0,0,0);return Math.floor((d-t)/(1000*60*60*24));}
+  function derivedStatus(rec){const d=daysLeft(rec.valid_to);if(d===null)return rec.status||'active';if(d<0)return'expired';if(d<=30)return'expiring';return rec.status||'active';}
+  function thaiDate(str){if(!str)return'-';const d=new Date(str+'T00:00:00');if(isNaN(d))return str;return d.toLocaleDateString('th-TH',{year:'numeric',month:'short',day:'numeric'});}
   async function copy(text){try{await navigator.clipboard.writeText(text);alert('คัดลอกแล้ว');}catch{const ta=document.createElement('textarea');ta.value=text;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();alert('คัดลอกแล้ว');}}
 
   let company=null,licenses=[],items=[];
   async function loadData(){
-    if(!COMPANY_CODE){ companyInfo.innerHTML='กรุณาเปิดผ่าน <b>index.html</b> หรือใส่พารามิเตอร์ <span class="tag">?company=รหัสบริษัท</span>';return;}
+    if(!COMPANY_CODE){companyInfo.innerHTML='กรุณาเปิดผ่าน <b>index.html</b> หรือใส่พารามิเตอร์ <span class="tag">?company=รหัสบริษัท</span>';return;}
     companyInfo.textContent='กำลังโหลด...';
-    const [{data:comps,error:cErr},{data:lic,error:lErr},{data:its,error:iErr}] = await Promise.all([
+    const [{data:comps},{data:lic},{data:its}] = await Promise.all([
       sb.from('companies').select('*').eq('code',COMPANY_CODE).maybeSingle(),
       sb.from('licenses').select('*').eq('company_code',COMPANY_CODE),
       sb.from('license_items').select('*')
     ]);
-    if(cErr){companyInfo.textContent='โหลดข้อมูลบริษัทผิดพลาด';return;}
     company=comps;licenses=lic||[];items=its||[];
     if(!company){companyInfo.innerHTML=`ไม่พบบริษัท <b>${COMPANY_CODE}</b>`;return;}
     companyInfo.innerHTML=`<b>${company.name}</b> <span class="muted">(${company.code})</span> — ลูกค้าอ่านอย่างเดียว`;
@@ -149,8 +151,11 @@
           ${lic.valid_to?`<span class="tag">ถึง ${lic.valid_to}</span>`:''}
           ${lic.renewed_at?`<div class="muted">ต่อครั้งล่าสุด: <b>${lic.renewed_at}</b></div>`:''}
           ${lic.note?`<div class="muted">หมายเหตุ: ${lic.note}</div>`:''}
+          ${lic.status_note?`<div class="muted" style="margin-top:8px"><b>📌 หมายเหตุเพิ่มเติมจากผู้ดูแล:</b> ${lic.status_note}</div>`:''}
+          <button class="btn btn-line" style="margin-top:8px" onclick="window.open('${OA_URL}?text=สวัสดีค่ะ บริษัท ${company.name} (${company.code}) ใบอนุญาตเลขที่ ${lic.license_no}', '_blank')">
+            💬 ส่งข้อความทาง LINE
+          </button>
         </div>
-        ${lic.status_note ? `<div class="muted" style="margin-top:8px"><b>📌 หมายเหตุเพิ่มเติมจากผู้ดูแล:</b> ${lic.status_note}</div>` : ''}
       `;
 
       if(lic._items.length===0){
