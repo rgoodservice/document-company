@@ -31,23 +31,41 @@ button{margin-top:16px;width:100%;padding:12px;border:none;border-radius:8px;bac
 </div>
 
 <script>
-const SUPABASE_URL = "https://velbtupsfspvfqhytaci.supabase.co";  // <-- แก้เป็นของคุณ
-const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZlbGJ0dXBzZnNwdmZxaHl0YWNpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTkxNDYyMjQsImV4cCI6MjA3NDcyMjIyNH0.ZVGvKh1ytyKUFH4b8T4ItVPXpFPSI57DXhuy89uVxKk";                // <-- แก้เป็นของคุณ
-const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+const SUPABASE_URL = "https://velbtupsfspvfqhytaci.supabase.co";   // <- ของน้ำผึ้ง
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZlbGJ0dXBzZnNwdmZxaHl0YWNpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTkxNDYyMjQsImV4cCI6MjA3NDcyMjIyNH0.ZVGvKh1ytyKUFH4b8T4ItVPXpFPSI57DXhuy89uVxKk";
+const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-document.getElementById("btnLogin").addEventListener("click", async()=>{
-  const email = document.getElementById("email").value.trim();
-  const password = document.getElementById("password").value.trim();
-  const msg = document.getElementById("msg");
-  msg.textContent = "";
-  if(!email || !password){ msg.textContent="กรอกอีเมลและรหัสผ่าน"; return; }
+const emailEl = document.getElementById("email");
+const passEl  = document.getElementById("password");
+const msgEl   = document.getElementById("msg");
+const btn     = document.getElementById("btnLogin");
+
+async function doLogin(){
+  msgEl.textContent = "";
+  const email = emailEl.value.trim();
+  const password = passEl.value.trim();
+  if(!email || !password){ msgEl.textContent = "กรอกอีเมลและรหัสผ่าน"; return; }
 
   const { data, error } = await sb.auth.signInWithPassword({ email, password });
-  if(error){ msg.textContent = "เข้าสู่ระบบไม่สำเร็จ: "+error.message; return; }
+  if(error){ msgEl.textContent = "เข้าสู่ระบบไม่สำเร็จ: " + error.message; return; }
 
-  // บันทึก token
-  localStorage.setItem("sb-token", data.session.access_token);
+  // ไม่ต้องเก็บ token เอง — Supabase จัดการ session ให้แล้ว
+  // ตรวจว่ามี session จริง แล้วค่อยไปหน้า admin
+  const { data: s } = await sb.auth.getSession();
+  if(!s || !s.session){ msgEl.textContent = "ไม่พบ session หลังล็อกอิน"; return; }
+
   location.href = "admin.html";
+}
+
+btn.addEventListener("click", doLogin);
+// กด Enter เพื่อ login
+[ emailEl, passEl ].forEach(el => el.addEventListener("keydown", e=>{
+  if(e.key === "Enter") doLogin();
+}));
+
+// ถ้ามี session อยู่แล้ว ให้เด้งไป admin เลย
+sb.auth.getUser().then(({ data })=>{
+  if(data && data.user) location.href = "admin.html";
 });
 </script>
 </body>
