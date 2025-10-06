@@ -1,0 +1,908 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Admin — ใบอนุญาต & ต่ออายุ (ครบฟีเจอร์ + LINE OA)</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Prompt:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#0f172a;--card:#1f2937;--text:#e5e7eb;--muted:#94a3b8;--accent:#22d3ee;--ok:#10b981;--warn:#f59e0b;--err:#ef4444;--border:#374151;--info:#60a5fa;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);font-family:'Prompt',system-ui,Segoe UI,Arial}
+  .wrap{max-width:1220px;margin:32px auto;padding:0 16px}
+  h1{font-size:28px;margin:0 0 12px}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:16px;padding:16px;box-shadow:0 6px 20px rgba(0,0,0,.25)}
+  label{font-size:14px;color:var(--muted)}
+  input,select,textarea{width:100%;padding:10px 12px;border-radius:12px;border:1px solid var(--border);background:#111827;color:var(--text)}
+  textarea{min-height:84px;resize:vertical}
+  .row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  .row3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px}
+  .btn{padding:10px 14px;border-radius:12px;border:1px solid var(--border);background:#0b1220;color:var(--text);cursor:pointer}
+  .btn:hover{opacity:.9}
+  .btn-accent{background:var(--accent);color:#0b1220;border:none;font-weight:700}
+  .btn-ok{background:var(--ok);color:#0b1220;border:none;font-weight:700}
+  .btn-warn{background:var(--warn);color:#0b1220;border:none;font-weight:700}
+  .btn-danger{background:var(--err);color:#0b1220;border:none;font-weight:700}
+  .btn-ghost{background:transparent;border:1px dashed var(--border);color:var(--muted)}
+  .muted{color:var(--muted);font-size:13px}
+  .sp{height:12px}
+  .tag{padding:4px 8px;border:1px solid var(--border);border-radius:999px;font-size:12px;color:var(--muted)}
+  .badge{padding:4px 10px;border-radius:999px;font-size:12px;font-weight:700;display:inline-block}
+  .b-active{background:rgba(16,185,129,.15);color:#34d399}
+  .b-expiring{background:rgba(245,158,11,.15);color:#fbbf24}
+  .b-expired{background:rgba(239,68,68,.15);color:#f87171}
+  .b-renewed{background:rgba(96,165,250,.15);color:#93c5fd}
+  .b-pending{background:rgba(34,211,238,.15);color:#67e8f9}
+  .b-suspended{background:rgba(148,163,184,.15);color:#cbd5e1}
+  .grid{display:grid;gap:12px}
+  .license{border:1px solid var(--border);border-radius:14px;padding:12px;background:#0f1627}
+  .items{border-left:2px solid var(--border);margin-left:6px;padding-left:12px}
+  .line{padding:6px 0;border-bottom:1px dashed var(--border)}
+  .headerFlex{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+  .right{margin-left:auto}
+  .toolbar{display:flex;gap:8px;flex-wrap:wrap}
+  /* Modal */
+  .modal-backdrop{position:fixed;inset:0;background:rgba(0,0,0,.55);display:none;align-items:center;justify-content:center;padding:16px;z-index:50}
+  .modal{width:100%;max-width:620px;background:var(--card);border:1px solid var(--border);border-radius:16px;box-shadow:0 10px 30px rgba(0,0,0,.45)}
+  .modal header{padding:16px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px}
+  .modal main{padding:16px}
+  .modal footer{padding:16px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:flex-end}
+  .chips{display:flex;gap:6px;flex-wrap:wrap}
+  .chip{border:1px dashed var(--border);border-radius:999px;padding:6px 10px;font-size:12px;cursor:pointer}
+  .chip:hover{background:#0b1220}
+  .hl{background:rgba(34,211,238,.08);border-color:rgba(34,211,238,.35)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>ระบบจัดการใบอนุญาต + ต่ออายุ</h1>
+  <p class="muted">สคีมา: <span class="tag">companies</span> → <span class="tag">licenses</span> → <span class="tag">license_items</span> + <span class="tag">license_renewals</span></p>
+
+  <!-- เลือก/เพิ่มบริษัท -->
+  <div class="card">
+    <h2 style="margin:0 0 8px">เพิ่ม / เลือกบริษัท</h2>
+    <div class="row">
+      <div>
+        <label>เลือกบริษัทที่มีอยู่</label>
+        <select id="companySelect"></select>
+      </div>
+      <div>
+        <label>หรือเพิ่มบริษัทใหม่</label>
+        <div class="row">
+          <input id="newCompanyCode" placeholder="code เช่น RGOOD"/>
+          <input id="newCompanyName" placeholder="ชื่อบริษัท"/>
+        </div>
+        <div class="sp"></div>
+        <button class="btn btn-ok" id="btnAddCompany">+ เพิ่มบริษัท</button>
+      </div>
+    </div>
+  </div>
+<div style="display:flex; justify-content:flex-end; margin-bottom:10px;">
+  <button onclick="logout()">ออกจากระบบ</button>
+</div>
+
+  <div class="sp"></div>
+
+  <!-- ฟอร์มเพิ่มใบอนุญาต -->
+  <div class="card">
+    <h2 style="margin:0 0 8px">เพิ่มใบอนุญาตให้บริษัทที่เลือก</h2>
+    <div class="row">
+      <div>
+        <label>เลขที่ใบอนุญาตครอบครอง</label>
+        <input id="licenseNo" placeholder="เช่น A123-2568"/>
+      </div>
+      <div>
+        <label>สถานะเริ่มต้น</label>
+        <select id="licenseStatus">
+          <option value="active">active (ใช้งาน)</option>
+          <option value="pending">pending (รอดำเนินการ)</option>
+          <option value="expiring">expiring (ใกล้หมดอายุ)</option>
+          <option value="expired">expired (หมดอายุ)</option>
+          <option value="renewed">renewed (ต่อแล้ว)</option>
+          <option value="suspended">suspended (ระงับ)</option>
+        </select>
+      </div>
+    </div>
+    <div class="row">
+      <div>
+        <label>วันเริ่มมีผล</label>
+        <input id="validFrom" type="date"/>
+      </div>
+      <div>
+        <label>วันสิ้นสุด</label>
+        <input id="validTo" type="date"/>
+      </div>
+    </div>
+    <div class="row">
+      <div>
+        <label>วันที่ติดตามครั้งถัดไป (ถ้ามี)</label>
+        <input id="nextActionDate" type="date"/>
+      </div>
+      <div>
+        <label>หมายเหตุ/เหตุผลสถานะ</label>
+        <input id="statusNote" placeholder="เช่น ส่งคำขอต่ออายุแล้ว"/>
+      </div>
+    </div>
+    <div class="row3">
+      <div>
+        <label>หมายเหตุใบอนุญาต</label>
+        <input id="licenseNote" placeholder="หมายเหตุอื่น ๆ"/>
+      </div>
+      <div></div><div></div>
+    </div>
+    <hr/>
+
+    <h3 style="margin:0 0 8px">รายการใต้ใบอนุญาตนี้ (ชื่อการค้า/สามัญ/ทะเบียนเลขที่ — เพิ่มได้หลายแถว)</h3>
+    <div id="itemsArea" class="grid"></div>
+    <button class="btn btn-ghost" id="btnAddRow">+ เพิ่มแถว</button>
+
+    <div class="sp"></div>
+    <button class="btn btn-accent" id="btnSaveLicense">บันทึกใบอนุญาต + รายการ</button>
+    <span id="saveMsg" class="muted"></span>
+  </div>
+
+  <div class="sp"></div>
+
+  <!-- ค้นหา/กรอง + Export + Copy + เชิญ OA -->
+  <div class="card">
+    <div class="toolbar" style="gap:12px;align-items:end;flex-wrap:wrap">
+      <div>
+        <label>กรองสถานะ</label>
+        <select id="filterStatus">
+          <option value="">— ทั้งหมด —</option>
+          <option value="pending">pending</option>
+          <option value="active">active</option>
+          <option value="expiring">expiring</option>
+          <option value="expired">expired</option>
+          <option value="renewed">renewed</option>
+          <option value="suspended">suspended</option>
+        </select>
+      </div>
+      <div>
+        <label>ใกล้หมดอายุใน</label>
+        <div class="row" style="grid-template-columns:1fr 1fr">
+          <input id="expSoonDays" type="number" min="1" value="30"/>
+          <select id="filterExpSoon">
+            <option value="">— ปิด —</option>
+            <option value="on">เปิด</option>
+          </select>
+        </div>
+      </div>
+      <div style="min-width:220px">
+        <label>ค้นหา (ชื่อบริษัท/เลขที่/ชื่อการค้า/สามัญ/ทะเบียน)</label>
+        <input id="searchText" placeholder="เช่น Glyphosate / 123-xxx"/>
+      </div>
+      <div>
+        <label>ช่วงวันหมดอายุ</label>
+        <div class="row" style="grid-template-columns:1fr 1fr">
+          <input id="validToFrom" type="date"/>
+          <input id="validToTo" type="date"/>
+        </div>
+      </div>
+
+      <div class="right" style="display:flex;gap:8px;flex-wrap:wrap">
+        <button class="btn" id="btnRefresh">รีเฟรช</button>
+        <button class="btn" id="btnExportCSV">Export CSV</button>
+        <button class="btn" id="btnExportXLSX">Export Excel</button>
+        <button class="btn" id="btnCopyAll">คัดลอกทั้งหมด</button>
+        <button class="btn" id="btnCopyInvite">คัดลอกเชิญแอด OA</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="sp"></div>
+
+  <!-- รายการทั้งหมด -->
+  <div class="card">
+    <h2 style="margin:0 0 8px">รายการทั้งหมด (บริษัท → ใบอนุญาต + สถานะ)</h2>
+    <div id="listArea" class="grid"></div>
+  </div>
+</div>
+
+<!-- Modal ต่ออายุ -->
+<div class="modal-backdrop" id="renewModal">
+  <div class="modal">
+    <header>
+      <strong>ต่ออายุใบอนุญาต</strong>
+      <span class="muted" id="renewTitle"></span>
+      <div class="right" style="margin-left:auto"></div>
+    </header>
+    <main>
+      <div class="row">
+        <div>
+          <label>วันที่ต่อจริง (YYYY-MM-DD) <span class="muted">(จำเป็น)</span></label>
+          <input type="date" id="renewedOn">
+        </div>
+        <div>
+          <label>วันหมดอายุใหม่ (ถ้ามี)</label>
+          <input type="date" id="newValidTo">
+        </div>
+      </div>
+      <div class="sp"></div>
+
+      <label>ปุ่มลัดคำนวณวันหมดอายุใหม่</label>
+      <div class="chips" id="quickAddChips">
+        <div class="chip" data-months="6">+6 เดือน</div>
+        <div class="chip" data-months="12">+12 เดือน</div>
+        <div class="chip" data-months="24">+24 เดือน</div>
+      </div>
+
+      <div class="sp"></div>
+      <label>หมายเหตุ (เช่น เลขอ้างอิงหนังสือ/คำสั่ง)</label>
+      <textarea id="renewNote" placeholder="เว้นว่างได้"></textarea>
+
+      <div class="sp"></div>
+      <div class="muted" id="renewHint"></div>
+      <div class="muted" id="renewErr" style="color:#f87171;margin-top:6px"></div>
+    </main>
+    <footer>
+      <button class="btn" id="btnCancelRenew">ยกเลิก</button>
+      <button class="btn btn-ok" id="btnSubmitRenew">บันทึกการต่ออายุ</button>
+    </footer>
+  </div>
+</div>
+
+<script>
+    // ===== CHECK LOGIN =====
+const SUPABASE_URL = "https://velbtupsfspvfqhytaci.supabase.co";
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZlbGJ0dXBzZnNwdmZxaHl0YWNpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTkxNDYyMjQsImV4cCI6MjA3NDcyMjIyNH0.ZVGvKh1ytyKUFH4b8T4ItVPXpFPSI57DXhuy89uVxKk";
+const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+async function checkLogin(){
+  const token = localStorage.getItem("sb-token");
+  if(!token){
+    alert("กรุณาเข้าสู่ระบบก่อนค่ะ");
+    location.href = "login.html";
+    return;
+  }
+
+  const { data: { user }, error } = await sb.auth.getUser(token);
+  if(error || !user){
+    alert("Session หมดอายุ กรุณาเข้าสู่ระบบใหม่");
+    localStorage.removeItem("sb-token");
+    location.href = "login.html";
+    return;
+  }
+
+  // ตรวจว่า user นี้เป็น admin จริงไหม (option ถ้าอยากจำกัดเฉพาะอีเมล)
+  const adminEmails = ["namphueng@yourdomain.com"]; // ใส่อีเมลที่เป็นแอดมิน
+  if(!adminEmails.includes(user.email)){
+    alert("คุณไม่มีสิทธิ์เข้าใช้งานหน้านี้");
+    location.href = "login.html";
+    return;
+  }
+
+  console.log("✅ เข้าสู่ระบบแล้ว:", user.email);
+}
+await checkLogin();
+
+  // ====== CONFIG ======
+  const SUPABASE_URL = "https://velbtupsfspvfqhytaci.supabase.co";   // <-- ใส่ของคุณ
+  const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZlbGJ0dXBzZnNwdmZxaHl0YWNpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTkxNDYyMjQsImV4cCI6MjA3NDcyMjIyNH0.ZVGvKh1ytyKUFH4b8T4ItVPXpFPSI57DXhuy89uVxKk";                  // <-- ใส่ของคุณ
+  const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+  // ====== YOUR LINE OA ======
+  const OA_HANDLE = "@991cyisb";
+  const OA_QR_URL = ""; // เช่น "https://example.com/line-oa-qr.png"
+
+  // (ทางเลือก) Proxy Function ถ้าจะยิงแจ้งเตือนอัตโนมัติภายหลัง
+  const NOTIFY_ENDPOINT = ""; // เว้นว่างไว้ก่อน
+
+  // ====== DOM ======
+  const el = (s)=>document.querySelector(s);
+  const companySelect=el('#companySelect');
+  const newCompanyCode=el('#newCompanyCode');
+  const newCompanyName=el('#newCompanyName');
+  const btnAddCompany=el('#btnAddCompany');
+
+  const licenseNo=el('#licenseNo');
+  const licenseStatus=el('#licenseStatus');
+  const validFrom=el('#validFrom');
+  const validTo=el('#validTo');
+  const nextActionDate=el('#nextActionDate');
+  const statusNote=el('#statusNote');
+  const licenseNote=el('#licenseNote');
+
+  const itemsArea=el('#itemsArea');
+  const btnAddRow=el('#btnAddRow');
+  const btnSaveLicense=el('#btnSaveLicense');
+  const saveMsg=el('#saveMsg');
+
+  const filterStatus=el('#filterStatus');
+  const filterExpSoon=el('#filterExpSoon');
+  const expSoonDays=el('#expSoonDays');
+  const searchText=el('#searchText');
+  const validToFrom=el('#validToFrom');
+  const validToTo=el('#validToTo');
+
+  const btnRefresh=el('#btnRefresh');
+  const btnExportCSV=el('#btnExportCSV');
+  const btnExportXLSX=el('#btnExportXLSX');
+  const btnCopyAll=el('#btnCopyAll');
+  const btnCopyInvite=el('#btnCopyInvite');
+  const listArea=el('#listArea');
+
+  // Modal
+  const renewModal=el('#renewModal');
+  const renewTitle=el('#renewTitle');
+  const renewedOnInput=el('#renewedOn');
+  const newValidToInput=el('#newValidTo');
+  const renewNoteInput=el('#renewNote');
+  const renewHint=el('#renewHint');
+  const renewErr=el('#renewErr');
+  const btnCancelRenew=el('#btnCancelRenew');
+  const btnSubmitRenew=el('#btnSubmitRenew');
+  const quickAddChips=el('#quickAddChips');
+
+  let currentRenewLicense = null;
+  let cache = { comps:[], lic:[], items:[] };
+
+  // ====== Helpers ======
+  function addItemRow(v={trade_name:'',common_name:'',registration_no:''}){
+    const row=document.createElement('div');
+    row.className='row3';
+    row.innerHTML=`
+      <div><label>ชื่อการค้า</label><input class="trade" placeholder="เช่น SuperGrow" value="${v.trade_name||''}"></div>
+      <div><label>ชื่อสามัญ</label><input class="common" placeholder="เช่น Glyphosate" value="${v.common_name||''}"></div>
+      <div><label>ทะเบียนเลขที่</label><input class="reg" placeholder="เช่น 123-456-xxxx" value="${v.registration_no||''}"></div>
+    `;
+    itemsArea.appendChild(row);
+  }
+  function badgeClass(status){
+    return ({
+      active:'b-active', expiring:'b-expiring', expired:'b-expired',
+      renewed:'b-renewed', pending:'b-pending', suspended:'b-suspended'
+    }[status]||'');
+  }
+  function todayStr(){ return new Date().toISOString().slice(0,10); }
+  function addMonths(dateStr, months){
+    if(!dateStr) return '';
+    const d=new Date(dateStr+'T00:00:00');
+    if(isNaN(d)) return '';
+    const day=d.getDate();
+    d.setMonth(d.getMonth()+months);
+    if(d.getDate()!==day) d.setDate(0);
+    return d.toISOString().slice(0,10);
+  }
+  function daysLeft(toDateStr){
+    if(!toDateStr) return null;
+    const today=new Date(); today.setHours(0,0,0,0);
+    const d=new Date(toDateStr); if(isNaN(d)) return null;
+    d.setHours(0,0,0,0);
+    const diff=(d - today)/(1000*60*60*24);
+    return Math.floor(diff);
+  }
+  function derivedAutoStatus(lic){
+    const keep = new Set(['renewed','suspended']);
+    if(keep.has(lic.status)) return lic.status;
+    const d=daysLeft(lic.valid_to);
+    if(d===null) return lic.status;
+    if(d<0) return 'expired';
+    if(d<=30) return 'expiring';
+    return 'active';
+  }
+  function derivedHint(valid_to, status){
+    const d=daysLeft(valid_to);
+    if(d===null) return '';
+    if(d<0) return `<span class="badge b-expired">หมดอายุมานาน ${Math.abs(d)} วัน</span>`;
+    if(d===0) return `<span class="badge b-expiring">หมดอายุวันนี้</span>`;
+    if(d<=30 && status!=='renewed')
+      return `<span class="badge b-expiring">ใกล้หมดอายุใน ${d} วัน</span>`;
+    return '';
+  }
+  async function copyToClipboard(text){
+    try { await navigator.clipboard.writeText(text); alert('คัดลอกแล้ว 📝'); }
+    catch {
+      const ta=document.createElement('textarea'); ta.value=text; document.body.appendChild(ta); ta.select();
+      document.execCommand('copy'); document.body.removeChild(ta); alert('คัดลอกแล้ว 📝');
+    }
+  }
+  function thaiDate(str){
+    if(!str) return '-';
+    const d=new Date(str+'T00:00:00'); if(isNaN(d)) return str;
+    return d.toLocaleDateString('th-TH', { year:'numeric', month:'short', day:'numeric' });
+  }
+  function buildMsgOne({company_name, company_code, license_no, valid_to, days_left}){
+    const core = [
+      `เรียนลูกค้า ${company_name} (${company_code})`,
+      `ขอเรียนแจ้งใบอนุญาตเลขที่ ${license_no}`,
+      valid_to
+        ? `กำหนดสิ้นสุด: ${thaiDate(valid_to)} (เหลือ ${days_left>=0?days_left:`เลยมา ${Math.abs(days_left)}`} วัน)`
+        : `กำหนดสิ้นสุด: -`,
+      `หากได้ดำเนินการต่ออายุแล้ว รบกวนแจ้งหลักฐาน/วันที่ต่ออายุด้วยค่ะ`,
+      ``,
+      `ติดต่อกลับทาง LINE OA: ${OA_HANDLE}${OA_QR_URL ? `\nQR: ${OA_QR_URL}` : ''}`,
+    ];
+    return core.join('\n');
+  }
+  function buildMsgBulk(rows){
+    const header = `สรุปใบอนุญาตที่ใกล้หมดอายุ`;
+    const lines = rows.map(r=>{
+      const dleft = daysLeft(r.valid_to);
+      const dd = r.valid_to ? `${thaiDate(r.valid_to)} (D-${dleft>=0?dleft:'+'+Math.abs(dleft)})` : '-';
+      return `• ${r._company.name} (${r.company_code}) — ${r.license_no} | ถึง ${dd}`;
+    });
+    lines.push(
+      ``,
+      `ติดต่อกลับทาง LINE OA: ${OA_HANDLE}${OA_QR_URL ? `\nQR: ${OA_QR_URL}` : ''}`
+    );
+    return [header, ...lines].join('\n');
+  }
+
+  // ====== Companies ======
+  async function loadCompanies(){
+    const {data,error}=await sb.from('companies').select('*').order('name',{ascending:true});
+    companySelect.innerHTML='';
+    if(error){ alert('โหลดบริษัทผิดพลาด: '+error.message); return; }
+    if(!data||data.length===0){
+      const opt=document.createElement('option'); opt.value=''; opt.textContent='— ยังไม่มีบริษัท —';
+      companySelect.appendChild(opt); return;
+    }
+    cache.comps = data;
+    for(const c of data){
+      const opt=document.createElement('option'); opt.value=c.code; opt.textContent=`${c.name} (${c.code})`;
+      companySelect.appendChild(opt);
+    }
+  }
+  btnAddCompany.addEventListener('click', async ()=>{
+    const code=newCompanyCode.value.trim(), name=newCompanyName.value.trim();
+    if(!code||!name) return alert('ใส่ code และ ชื่อบริษัท ให้ครบ');
+    const {error}=await sb.from('companies').insert({code,name});
+    if(error) return alert('เพิ่มบริษัทไม่สำเร็จ: '+error.message);
+    newCompanyCode.value=''; newCompanyName.value='';
+    await loadCompanies(); companySelect.value=code;
+  });
+
+  // ====== Save License + Items ======
+  btnAddRow.addEventListener('click', ()=>addItemRow());
+
+  btnSaveLicense.addEventListener('click', async ()=>{
+    saveMsg.textContent='';
+    const company_code=companySelect.value;
+    if(!company_code) return alert('กรุณาเลือกบริษัท');
+    const lno=licenseNo.value.trim(); if(!lno) return alert('ใส่เลขที่ใบอนุญาต');
+
+    const payloadLic={
+      company_code,
+      license_no:lno,
+      valid_from:validFrom.value||null,
+      valid_to:validTo.value||null,
+      note:licenseNote.value||null,
+      status:licenseStatus.value,
+      next_action_date: nextActionDate.value||null,
+      status_note: statusNote.value||null
+    };
+
+    const {data:lic, error:licErr}=await sb.from('licenses')
+      .upsert(payloadLic,{onConflict:'company_code,license_no'})
+      .select().single();
+    if(licErr) return alert('บันทึกใบอนุญาตไม่สำเร็จ: '+licErr.message);
+
+    const rows=[...itemsArea.querySelectorAll('.row3')];
+    const items=[];
+    for(const r of rows){
+      const trade=r.querySelector('.trade').value.trim();
+      const common=r.querySelector('.common').value.trim();
+      const reg=r.querySelector('.reg').value.trim();
+      if(!trade && !common && !reg) continue;
+      if(!trade){ alert('ทุกแถวต้องมี "ชื่อการค้า" อย่างน้อย'); return; }
+      items.push({license_id:lic.id, trade_name:trade, common_name:common||null, registration_no:reg||null});
+    }
+    await sb.from('license_items').delete().eq('license_id', lic.id);
+    if(items.length>0){
+      const {error:insErr}=await sb.from('license_items').insert(items);
+      if(insErr) return alert('บันทึกรายการไม่สำเร็จ: '+insErr.message);
+    }
+    saveMsg.textContent='✔ บันทึกเสร็จแล้ว';
+    itemsArea.innerHTML=''; addItemRow();
+    await renderList();
+  });
+
+  // ====== Renew Modal & Actions ======
+  async function updateLicenseStatus(license_id, patch){
+    const {error}=await sb.from('licenses').update(patch).eq('id',license_id);
+    if(error){ alert('อัปเดตสถานะไม่สำเร็จ: '+error.message); return; }
+    await renderList();
+  }
+
+  function openRenewModal(license){
+    currentRenewLicense = license; // {id, company_code, company_name, license_no, valid_to}
+    renewErr.textContent='';
+    renewTitle.textContent = `— ${license.company_name} (${license.company_code}) / เลขที่: ${license.license_no}`;
+    renewedOnInput.value = todayStr();
+    newValidToInput.value = license.valid_to || '';
+    renewNoteInput.value = '';
+    renewHint.innerHTML = license.valid_to ? `กำหนดเดิม: <b>ถึง ${license.valid_to}</b>` : 'ยังไม่เคยตั้งวันหมดอายุ';
+    renewModal.style.display='flex';
+  }
+  function closeRenewModal(){
+    renewModal.style.display='none';
+    currentRenewLicense = null;
+  }
+  btnCancelRenew.addEventListener('click', closeRenewModal);
+  renewModal.addEventListener('click', (e)=>{ if(e.target===renewModal) closeRenewModal(); });
+
+  quickAddChips.addEventListener('click', (e)=>{
+    const chip = e.target.closest('.chip'); if(!chip) return;
+    const m = parseInt(chip.getAttribute('data-months'),10);
+    const base = renewedOnInput.value || todayStr();
+    const newTo = addMonths(base, m);
+    if(newTo) newValidToInput.value = newTo;
+    [...quickAddChips.children].forEach(c=>c.classList.remove('hl'));
+    chip.classList.add('hl');
+  });
+
+  btnSubmitRenew.addEventListener('click', submitRenewal);
+
+  async function submitRenewal(){
+    renewErr.textContent='';
+    if(!currentRenewLicense) return closeRenewModal();
+
+    const renewed_on = (renewedOnInput.value||'').trim();
+    const new_valid_to = (newValidToInput.value||'').trim();
+    const note = (renewNoteInput.value||'').trim();
+
+    if(!renewed_on){ renewErr.textContent='กรุณาใส่วันที่ต่อจริง'; return; }
+    if(renewed_on.length!==10){ renewErr.textContent='รูปแบบวันที่ต่อจริงไม่ถูกต้อง (YYYY-MM-DD)'; return; }
+    if(new_valid_to && new_valid_to.length!==10){ renewErr.textContent='รูปแบบวันหมดอายุใหม่ไม่ถูกต้อง (YYYY-MM-DD)'; return; }
+
+    // 1) ประวัติ
+    const payloadHist = {
+      license_id: currentRenewLicense.id,
+      renewed_on,
+      new_valid_to: new_valid_to ? new_valid_to : null,
+      note: note || null
+    };
+    const { error:histErr } = await sb.from('license_renewals').insert(payloadHist);
+    if(histErr){ renewErr.textContent = 'บันทึกประวัติล้มเหลว: '+histErr.message; return; }
+
+    // 2) อัปเดตหลัก
+    const patch = { status:'renewed', renewed_at: renewed_on, status_note: 'ต่ออายุเรียบร้อย' };
+    if(new_valid_to) patch.valid_to = new_valid_to;
+    const { error:upErr } = await sb.from('licenses').update(patch).eq('id', currentRenewLicense.id);
+    if(upErr){ renewErr.textContent = 'อัปเดตใบอนุญาตไม่สำเร็จ: '+upErr.message; return; }
+
+    closeRenewModal();
+    await renderList();
+
+    if(NOTIFY_ENDPOINT){
+      fetch(NOTIFY_ENDPOINT, {
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({
+          kind:'renewed',
+          company: currentRenewLicense.company_name,
+          license_no: currentRenewLicense.license_no,
+          renewed_on, new_valid_to, note
+        })
+      }).catch(()=>{});
+    }
+  }
+
+  // ====== Load + Filter + Render ======
+  async function loadAllRaw(){
+    const [{data:comps,error:cErr},{data:licAll,error:lErr},{data:itemsAll,error:iErr}] = await Promise.all([
+      sb.from('companies').select('*'),
+      sb.from('licenses').select('*'),
+      sb.from('license_items').select('*')
+    ]);
+    if(cErr||lErr||iErr){
+      listArea.innerHTML=`<span class="muted">${(cErr||lErr||iErr).message}</span>`;
+      return;
+    }
+    cache.comps = comps||[];
+    cache.lic = licAll||[];
+    cache.items = itemsAll||[];
+  }
+
+  function fuseDataAndFilter(){
+    const compByCode={}; for(const c of cache.comps) compByCode[c.code]=c;
+    const itemsByLicense={}; for(const it of cache.items) (itemsByLicense[it.license_id] ||= []).push(it);
+
+    let rows = cache.lic.map(lic=>{
+      const c = compByCode[lic.company_code] || {name:'(บริษัทถูกลบ)', code: lic.company_code};
+      const derived = derivedAutoStatus(lic);
+      const out = {...lic, _company:c, _derived_status: derived, _items: itemsByLicense[lic.id]||[]};
+      return out;
+    });
+
+    if(filterStatus.value){
+      rows = rows.filter(r=> r._derived_status === filterStatus.value);
+    }
+
+    if(filterExpSoon.value==='on'){
+      const days = Math.max(1, parseInt(expSoonDays.value||'30',10));
+      rows = rows.filter(r=>{
+        const d=daysLeft(r.valid_to);
+        return d!==null && d>=0 && d<=days && r._derived_status!=='renewed';
+      });
+    }
+
+    if(validToFrom.value){
+      rows = rows.filter(r=> r.valid_to && r.valid_to >= validToFrom.value);
+    }
+    if(validToTo.value){
+      rows = rows.filter(r=> r.valid_to && r.valid_to <= validToTo.value);
+    }
+
+    const q = (searchText.value||'').trim().toLowerCase();
+    if(q){
+      rows = rows.filter(r=>{
+        const company = `${r._company.name} ${r._company.code}`.toLowerCase();
+        const me = `${r.license_no} ${r.note||''} ${r.status_note||''}`.toLowerCase();
+        const itemStr = (r._items||[]).map(it=>(`${it.trade_name||''} ${it.common_name||''} ${it.registration_no||''}`)).join(' ').toLowerCase();
+        return company.includes(q) || me.includes(q) || itemStr.includes(q);
+      });
+    }
+
+    const byCompany={};
+    for(const r of rows){ (byCompany[r.company_code] ||= []).push(r); }
+    return { byCompany, itemsByLicense, compByCode };
+  }
+
+  async function renderList(){
+    listArea.innerHTML='<span class="muted">กำลังโหลด…</span>';
+    await loadAllRaw();
+
+    const {byCompany, itemsByLicense, compByCode} = fuseDataAndFilter();
+
+    listArea.innerHTML='';
+    const compCodes=Object.keys(byCompany);
+    if(compCodes.length===0){
+      listArea.innerHTML='<span class="muted">— ไม่พบรายการตามเงื่อนไข —</span>'; return;
+    }
+
+    for(const code of compCodes){
+      const c=compByCode[code] || {name:'(บริษัทถูกลบ)', code};
+      const box=document.createElement('div'); box.className='license';
+      const header=document.createElement('div'); header.className='headerFlex';
+      header.innerHTML=`<b>${c.name}</b> <span class="muted">(${c.code})</span>`;
+      box.appendChild(header);
+
+      const licList=byCompany[code]||[];
+      for(const lic of licList){
+        const status = lic._derived_status;
+        const hint=derivedHint(lic.valid_to, status);
+        const dleft=daysLeft(lic.valid_to);
+        const dtext = dleft!==null ? `<span class="tag">D-${dleft>=0?dleft:('+'+Math.abs(dleft))}</span>` : '';
+        const group=document.createElement('div'); group.className='items';
+
+        const top=document.createElement('div'); top.className='line';
+        top.innerHTML=`
+          <div class="headerFlex">
+            <div>
+              <b>เลขที่ใบอนุญาต:</b> ${lic.license_no}
+              <span class="badge ${badgeClass(status)}">${status}</span>
+              ${dtext} ${hint}
+              ${lic.valid_from?`<span class="tag">ตั้งแต่ ${lic.valid_from}</span>`:''}
+              ${lic.valid_to?`<span class="tag">ถึง ${lic.valid_to}</span>`:''}
+              ${lic.renewed_at?`<div class="muted">ต่อครั้งล่าสุด: <b>${lic.renewed_at}</b></div>`:''}
+              ${lic.next_action_date?`<span class="tag">ติดตาม: ${lic.next_action_date}</span>`:''}
+              ${lic.status_note?`<div class="muted">หมายเหตุสถานะ: ${lic.status_note}</div>`:''}
+              ${lic.note?`<div class="muted">หมายเหตุใบอนุญาต: ${lic.note}</div>`:''}
+            </div>
+            <div class="right toolbar">
+              <button class="btn btn-ok" data-act="renew"   data-id="${lic.id}">ต่อแล้ว</button>
+              <button class="btn btn-warn" data-act="expiring" data-id="${lic.id}">ใกล้หมด</button>
+              <button class="btn btn-danger" data-act="expired" data-id="${lic.id}">หมดอายุ</button>
+              <button class="btn" data-act="active"  data-id="${lic.id}">Active</button>
+              <button class="btn" data-act="pending" data-id="${lic.id}">Pending</button>
+              <button class="btn" data-act="suspended" data-id="${lic.id}">ระงับ</button>
+              <button class="btn" data-act="copymsg" data-id="${lic.id}">คัดลอกข้อความ</button>
+            </div>
+          </div>
+        `;
+        group.appendChild(top);
+
+        const rows=itemsByLicense[lic.id]||[];
+        if(rows.length===0){
+          const none=document.createElement('div'); none.className='muted'; none.style.padding='6px 0';
+          none.textContent='— ยังไม่มีรายการชื่อการค้า/สามัญ/ทะเบียนเลขที่ —';
+          group.appendChild(none);
+        }else{
+          for(const r of rows){
+            const line=document.createElement('div'); line.style.padding='6px 0';
+            line.innerHTML=`
+              <div class="toolbar">
+                <span class="tag"><b>ชื่อการค้า</b>: ${r.trade_name||'-'}</span>
+                <span class="tag"><b>ชื่อสามัญ</b>: ${r.common_name||'-'}</span>
+                <span class="tag"><b>ทะเบียนเลขที่</b>: ${r.registration_no||'-'}</span>
+              </div>
+            `;
+            group.appendChild(line);
+          }
+        }
+
+        const historyBox = document.createElement('div');
+        historyBox.className = 'muted';
+        historyBox.style.padding = '6px 0';
+        historyBox.innerHTML = `<span class="tag">ประวัติการต่ออายุ</span> <span id="hist-${lic.id}">กำลังโหลด…</span>`;
+        group.appendChild(historyBox);
+        loadRenewalHistory(lic.id);
+
+        group.addEventListener('click', async (e)=>{
+          const btn=e.target.closest('button[data-act]'); if(!btn) return;
+          const act=btn.getAttribute('data-act'); const id=btn.getAttribute('data-id');
+          if(act==='copymsg'){
+            const dleft = daysLeft(lic.valid_to);
+            const msg = buildMsgOne({
+              company_name: lic._company.name,
+              company_code: lic.company_code,
+              license_no: lic.license_no,
+              valid_to: lic.valid_to || '',
+              days_left: dleft==null? '-' : dleft
+            });
+            await copyToClipboard(msg);
+            return;
+          }
+          if(act==='renew'){
+            openRenewModal({ id, company_code: lic.company_code, company_name: lic._company.name, license_no: lic.license_no, valid_to: lic.valid_to||'' });
+          } else {
+            await updateLicenseStatus(id,{status:act, status_note:null});
+          }
+        });
+
+        box.appendChild(group);
+      }
+      listArea.appendChild(box);
+    }
+  }
+
+  async function loadRenewalHistory(license_id){
+    const span = document.querySelector(`#hist-${license_id}`);
+    if(!span) return;
+    const { data, error } = await sb
+      .from('license_renewals')
+      .select('renewed_on,new_valid_to,note')
+      .eq('license_id', license_id)
+      .order('renewed_on', { ascending:false })
+      .limit(3);
+    if(error){ span.textContent = 'โหลดประวัติล้มเหลว'; return; }
+    if(!data || data.length===0){ span.textContent = '— ไม่มีประวัติ —'; return; }
+    span.innerHTML = data.map(r => {
+      const to = r.new_valid_to ? ` → หมดอายุใหม่: ${r.new_valid_to}` : '';
+      const nt = r.note ? ` — ${r.note}` : '';
+      return `ต่อ: <b>${r.renewed_on}</b>${to}${nt}`;
+    }).join(' | ');
+  }
+
+  // ====== Export & Copy All / Invite OA ======
+  function currentFilteredRowsFlat(){
+    const compByCode={}; for(const c of cache.comps) compByCode[c.code]=c;
+    const itemsByLicense={}; for(const it of cache.items) (itemsByLicense[it.license_id] ||= []).push(it);
+    let rows = cache.lic.map(lic=>{
+      const c = compByCode[lic.company_code] || {name:'(บริษัทถูกลบ)', code: lic.company_code};
+      const derived = derivedAutoStatus(lic);
+      return {...lic, _company:c, _derived_status: derived, _items: itemsByLicense[lic.id]||[]};
+    });
+    if(filterStatus.value) rows = rows.filter(r=> r._derived_status === filterStatus.value);
+    if(filterExpSoon.value==='on'){
+      const days = Math.max(1, parseInt(expSoonDays.value||'30',10));
+      rows = rows.filter(r=>{
+        const d=daysLeft(r.valid_to);
+        return d!==null && d>=0 && d<=days && r._derived_status!=='renewed';
+      });
+    }
+    if(validToFrom.value) rows = rows.filter(r=> r.valid_to && r.valid_to >= validToFrom.value);
+    if(validToTo.value) rows = rows.filter(r=> r.valid_to && r.valid_to <= validToTo.value);
+    const q = (searchText.value||'').trim().toLowerCase();
+    if(q){
+      rows = rows.filter(r=>{
+        const company = `${r._company.name} ${r._company.code}`.toLowerCase();
+        const me = `${r.license_no} ${r.note||''} ${r.status_note||''}`.toLowerCase();
+        const itemStr = (r._items||[]).map(it=>(`${it.trade_name||''} ${it.common_name||''} ${it.registration_no||''}`)).join(' ').toLowerCase();
+        return company.includes(q) || me.includes(q) || itemStr.includes(q);
+      });
+    }
+    const out=[];
+    for(const r of rows){
+      if(r._items.length===0){
+        out.push({
+          company_name: r._company.name,
+          company_code: r.company_code,
+          license_no: r.license_no,
+          status: r._derived_status,
+          valid_from: r.valid_from, valid_to: r.valid_to, renewed_at: r.renewed_at,
+          note: r.note
+        });
+      }else{
+        for(const it of r._items){
+          out.push({
+            company_name: r._company.name,
+            company_code: r.company_code,
+            license_no: r.license_no,
+            status: r._derived_status,
+            valid_from: r.valid_from, valid_to: r.valid_to, renewed_at: r.renewed_at,
+            trade_name: it.trade_name, common_name: it.common_name, registration_no: it.registration_no,
+            note: r.note
+          });
+        }
+      }
+    }
+    return out;
+  }
+  function exportCSV(){
+    const rows=currentFilteredRowsFlat();
+    if(rows.length===0){ alert('ไม่มีข้อมูลให้ส่งออก'); return; }
+    const cols=Object.keys(rows[0]);
+    const lines=[cols.join(',')];
+    for(const r of rows){
+      const line = cols.map(k=>{
+        const v = r[k]==null ? '' : String(r[k]).replace(/"/g,'""');
+        return /[",\n]/.test(v) ? `"${v}"` : v;
+      }).join(',');
+      lines.push(line);
+    }
+    const blob=new Blob([lines.join('\n')],{type:'text/csv;charset=utf-8;'});
+    const a=document.createElement('a');
+    a.href=URL.createObjectURL(blob);
+    a.download='licenses_export.csv';
+    a.click();
+    URL.revokeObjectURL(a.href);
+  }
+  function exportXLSX(){
+    const rows=currentFilteredRowsFlat();
+    if(rows.length===0){ alert('ไม่มีข้อมูลให้ส่งออก'); return; }
+    const ws = XLSX.utils.json_to_sheet(rows);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Licenses');
+    XLSX.writeFile(wb, 'licenses_export.xlsx');
+  }
+  btnExportCSV.addEventListener('click', exportCSV);
+  btnExportXLSX.addEventListener('click', exportXLSX);
+
+  btnCopyAll.addEventListener('click', async ()=>{
+    await loadAllRaw();
+    const {byCompany, compByCode} = fuseDataAndFilter();
+    const rows = [];
+    for(const code of Object.keys(byCompany)){
+      for(const lic of byCompany[code]){
+        rows.push({...lic, _company: compByCode[code]});
+      }
+    }
+    if(rows.length===0){ alert('ไม่มีรายการตามตัวกรอง'); return; }
+    const msg = buildMsgBulk(rows);
+    await copyToClipboard(msg);
+  });
+
+  btnCopyInvite.addEventListener('click', async ()=>{
+    const msg = [
+      `รบกวนแอด LINE OA เพื่อรับการแจ้งเตือนและส่งหลักฐานได้สะดวกค่ะ`,
+      `LINE OA: ${OA_HANDLE}`,
+      OA_QR_URL ? `QR: ${OA_QR_URL}` : ''
+    ].filter(Boolean).join('\n');
+    await copyToClipboard(msg);
+  });
+
+  // ====== Events ======
+  btnRefresh.addEventListener('click', renderList);
+  filterStatus.addEventListener('change', renderList);
+  filterExpSoon.addEventListener('change', renderList);
+  expSoonDays.addEventListener('change', renderList);
+  searchText.addEventListener('input', ()=>{ renderList(); });
+  validToFrom.addEventListener('change', renderList);
+  validToTo.addEventListener('change', renderList);
+
+  // ====== Init ======
+  (async ()=>{
+    await loadCompanies();
+    addItemRow();
+    await renderList();
+  })();
+</script>
+
+<script>
+async function logout(){
+  await sb.auth.signOut();           // ออกจากระบบ Supabase
+  localStorage.removeItem("sb-token"); // ล้าง token ที่เก็บไว้
+  location.href = "login.html";        // กลับไปหน้าล็อกอิน
+}
+</script>
+
+
+</body>
+</html>
