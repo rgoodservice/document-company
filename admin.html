@@ -45,7 +45,6 @@
   .headerFlex{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
   .right{margin-left:auto}
   .toolbar{display:flex;gap:8px;flex-wrap:wrap}
-  /* Modal */
   .modal-backdrop{position:fixed;inset:0;background:rgba(0,0,0,.55);display:none;align-items:center;justify-content:center;padding:16px;z-index:50}
   .modal{width:100%;max-width:620px;background:var(--card);border:1px solid var(--border);border-radius:16px;box-shadow:0 10px 30px rgba(0,0,0,.45)}
   .modal header{padding:16px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px}
@@ -59,6 +58,10 @@
 </head>
 <body>
 <div class="wrap">
+  <div style="text-align:right; margin-bottom:10px;">
+    <button class="btn btn-ghost" onclick="logout()">ออกจากระบบ</button>
+  </div>
+
   <h1>ระบบจัดการใบอนุญาต + ต่ออายุ</h1>
   <p class="muted">สคีมา: <span class="tag">companies</span> → <span class="tag">licenses</span> → <span class="tag">license_items</span> + <span class="tag">license_renewals</span></p>
 
@@ -81,9 +84,6 @@
       </div>
     </div>
   </div>
-<div style="display:flex; justify-content:flex-end; margin-bottom:10px;">
-  <button onclick="logout()">ออกจากระบบ</button>
-</div>
 
   <div class="sp"></div>
 
@@ -247,52 +247,37 @@
 </div>
 
 <script>
-    // ===== CHECK LOGIN =====
-const SUPABASE_URL = "https://velbtupsfspvfqhytaci.supabase.co";
-const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZlbGJ0dXBzZnNwdmZxaHl0YWNpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTkxNDYyMjQsImV4cCI6MjA3NDcyMjIyNH0.ZVGvKh1ytyKUFH4b8T4ItVPXpFPSI57DXhuy89uVxKk";
-const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-
-async function checkLogin(){
-  const token = localStorage.getItem("sb-token");
-  if(!token){
-    alert("กรุณาเข้าสู่ระบบก่อนค่ะ");
-    location.href = "login.html";
-    return;
-  }
-
-  const { data: { user }, error } = await sb.auth.getUser(token);
-  if(error || !user){
-    alert("Session หมดอายุ กรุณาเข้าสู่ระบบใหม่");
-    localStorage.removeItem("sb-token");
-    location.href = "login.html";
-    return;
-  }
-
-  // ตรวจว่า user นี้เป็น admin จริงไหม (option ถ้าอยากจำกัดเฉพาะอีเมล)
-  const adminEmails = ["namphueng@yourdomain.com"]; // ใส่อีเมลที่เป็นแอดมิน
-  if(!adminEmails.includes(user.email)){
-    alert("คุณไม่มีสิทธิ์เข้าใช้งานหน้านี้");
-    location.href = "login.html";
-    return;
-  }
-
-  console.log("✅ เข้าสู่ระบบแล้ว:", user.email);
-}
-await checkLogin();
-
-  // ====== CONFIG ======
-  const SUPABASE_URL = "https://velbtupsfspvfqhytaci.supabase.co";   // <-- ใส่ของคุณ
-  const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZlbGJ0dXBzZnNwdmZxaHl0YWNpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTkxNDYyMjQsImV4cCI6MjA3NDcyMjIyNH0.ZVGvKh1ytyKUFH4b8T4ItVPXpFPSI57DXhuy89uVxKk";                  // <-- ใส่ของคุณ
+  // ===== Supabase Config (ประกาศครั้งเดียว) =====
+  const SUPABASE_URL = "https://velbtupsfspvfqhytaci.supabase.co";
+  const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZlbGJ0dXBzZnNwdmZxaHl0YWNpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTkxNDYyMjQsImV4cCI6MjA3NDcyMjIyNH0.ZVGvKh1ytyKUFH4b8T4ItVPXpFPSI57DXhuy89uVxKk";
   const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-  // ====== YOUR LINE OA ======
+  // ===== เช็คล็อกอินที่ถูกต้อง (ไม่ใช้ token เอง) =====
+  async function checkLogin() {
+    const { data: { user }, error } = await sb.auth.getUser(); // อ่าน session ที่ lib เก็บเอง
+    if (error || !user) {
+      alert("กรุณาเข้าสู่ระบบก่อนค่ะ");
+      location.href = "login.html";
+      return false;
+    }
+    // (ถ้าจะล็อกเฉพาะบางอีเมล ให้ใส่ไว้ที่นี่)
+    const adminEmails = ["namphueng@yourdomain.com"]; // <- แก้เป็นอีเมลที่อนุญาต
+    if (adminEmails.length && !adminEmails.includes(user.email)) {
+      alert("คุณไม่มีสิทธิ์เข้าใช้งานหน้านี้");
+      await sb.auth.signOut();
+      location.href = "login.html";
+      return false;
+    }
+    console.log("✅ เข้าสู่ระบบแล้ว:", user.email);
+    return true;
+  }
+
+  // ===== LINE OA / Proxy (ตัวเลือก) =====
   const OA_HANDLE = "@991cyisb";
-  const OA_QR_URL = ""; // เช่น "https://example.com/line-oa-qr.png"
+  const OA_QR_URL = "";
+  const NOTIFY_ENDPOINT = "";
 
-  // (ทางเลือก) Proxy Function ถ้าจะยิงแจ้งเตือนอัตโนมัติภายหลัง
-  const NOTIFY_ENDPOINT = ""; // เว้นว่างไว้ก่อน
-
-  // ====== DOM ======
+  // ===== DOM =====
   const el = (s)=>document.querySelector(s);
   const companySelect=el('#companySelect');
   const newCompanyCode=el('#newCompanyCode');
@@ -341,7 +326,7 @@ await checkLogin();
   let currentRenewLicense = null;
   let cache = { comps:[], lic:[], items:[] };
 
-  // ====== Helpers ======
+  // ===== Helpers =====
   function addItemRow(v={trade_name:'',common_name:'',registration_no:''}){
     const row=document.createElement('div');
     row.className='row3';
@@ -433,7 +418,7 @@ await checkLogin();
     return [header, ...lines].join('\n');
   }
 
-  // ====== Companies ======
+  // ===== Companies =====
   async function loadCompanies(){
     const {data,error}=await sb.from('companies').select('*').order('name',{ascending:true});
     companySelect.innerHTML='';
@@ -457,7 +442,7 @@ await checkLogin();
     await loadCompanies(); companySelect.value=code;
   });
 
-  // ====== Save License + Items ======
+  // ===== Save License + Items =====
   btnAddRow.addEventListener('click', ()=>addItemRow());
 
   btnSaveLicense.addEventListener('click', async ()=>{
@@ -502,7 +487,7 @@ await checkLogin();
     await renderList();
   });
 
-  // ====== Renew Modal & Actions ======
+  // ===== Renew Modal & Actions =====
   async function updateLicenseStatus(license_id, patch){
     const {error}=await sb.from('licenses').update(patch).eq('id',license_id);
     if(error){ alert('อัปเดตสถานะไม่สำเร็จ: '+error.message); return; }
@@ -510,7 +495,7 @@ await checkLogin();
   }
 
   function openRenewModal(license){
-    currentRenewLicense = license; // {id, company_code, company_name, license_no, valid_to}
+    currentRenewLicense = license;
     renewErr.textContent='';
     renewTitle.textContent = `— ${license.company_name} (${license.company_code}) / เลขที่: ${license.license_no}`;
     renewedOnInput.value = todayStr();
@@ -550,7 +535,6 @@ await checkLogin();
     if(renewed_on.length!==10){ renewErr.textContent='รูปแบบวันที่ต่อจริงไม่ถูกต้อง (YYYY-MM-DD)'; return; }
     if(new_valid_to && new_valid_to.length!==10){ renewErr.textContent='รูปแบบวันหมดอายุใหม่ไม่ถูกต้อง (YYYY-MM-DD)'; return; }
 
-    // 1) ประวัติ
     const payloadHist = {
       license_id: currentRenewLicense.id,
       renewed_on,
@@ -560,7 +544,6 @@ await checkLogin();
     const { error:histErr } = await sb.from('license_renewals').insert(payloadHist);
     if(histErr){ renewErr.textContent = 'บันทึกประวัติล้มเหลว: '+histErr.message; return; }
 
-    // 2) อัปเดตหลัก
     const patch = { status:'renewed', renewed_at: renewed_on, status_note: 'ต่ออายุเรียบร้อย' };
     if(new_valid_to) patch.valid_to = new_valid_to;
     const { error:upErr } = await sb.from('licenses').update(patch).eq('id', currentRenewLicense.id);
@@ -583,7 +566,7 @@ await checkLogin();
     }
   }
 
-  // ====== Load + Filter + Render ======
+  // ===== Load + Filter + Render =====
   async function loadAllRaw(){
     const [{data:comps,error:cErr},{data:licAll,error:lErr},{data:itemsAll,error:iErr}] = await Promise.all([
       sb.from('companies').select('*'),
@@ -770,7 +753,7 @@ await checkLogin();
     }).join(' | ');
   }
 
-  // ====== Export & Copy All / Invite OA ======
+  // ===== Export & Copy =====
   function currentFilteredRowsFlat(){
     const compByCode={}; for(const c of cache.comps) compByCode[c.code]=c;
     const itemsByLicense={}; for(const it of cache.items) (itemsByLicense[it.license_id] ||= []).push(it);
@@ -878,31 +861,21 @@ await checkLogin();
     await copyToClipboard(msg);
   });
 
-  // ====== Events ======
-  btnRefresh.addEventListener('click', renderList);
-  filterStatus.addEventListener('change', renderList);
-  filterExpSoon.addEventListener('change', renderList);
-  expSoonDays.addEventListener('change', renderList);
-  searchText.addEventListener('input', ()=>{ renderList(); });
-  validToFrom.addEventListener('change', renderList);
-  validToTo.addEventListener('change', renderList);
-
-  // ====== Init ======
+  // ===== Init (เช็คล็อกอินก่อนแล้วค่อยโหลดข้อมูล) =====
   (async ()=>{
+    const ok = await checkLogin();
+    if(!ok) return; // จะ redirect ออกไปแล้ว
+
     await loadCompanies();
     addItemRow();
     await renderList();
   })();
+
+  // ===== Logout =====
+  async function logout(){
+    await sb.auth.signOut();
+    location.href = "login.html";
+  }
 </script>
-
-<script>
-async function logout(){
-  await sb.auth.signOut();           // ออกจากระบบ Supabase
-  localStorage.removeItem("sb-token"); // ล้าง token ที่เก็บไว้
-  location.href = "login.html";        // กลับไปหน้าล็อกอิน
-}
-</script>
-
-
 </body>
 </html>
