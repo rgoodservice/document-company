@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>เข้าสู่ระบบแอดมิน — License Portal</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<link href="https://fonts.googleapis.com/css2?family=Prompt:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#0f172a;--card:#1e293b;--text:#e5e7eb;--muted:#94a3b8;--accent:#38bdf8;--error:#ef4444;
+}
+body{margin:0;background:var(--bg);font-family:'Prompt',system-ui;color:var(--text);display:flex;align-items:center;justify-content:center;height:100vh}
+.card{background:var(--card);padding:32px;border-radius:16px;max-width:360px;width:100%;box-shadow:0 4px 20px rgba(0,0,0,.2)}
+h1{text-align:center;margin:0 0 12px}
+label{display:block;margin:8px 0 4px;color:var(--muted)}
+input{width:100%;padding:10px 12px;border-radius:8px;border:1px solid var(--muted);background:#0f172a;color:var(--text)}
+button{margin-top:16px;width:100%;padding:12px;border:none;border-radius:8px;background:var(--accent);font-weight:600;color:#0f172a;cursor:pointer}
+.error{color:var(--error);text-align:center;margin-top:8px}
+</style>
+</head>
+<body>
+<div class="card">
+  <h1>เข้าสู่ระบบแอดมิน</h1>
+  <label>อีเมล</label>
+  <input id="email" type="email" placeholder="อีเมลแอดมิน">
+  <label>รหัสผ่าน</label>
+  <input id="password" type="password" placeholder="••••••">
+  <button id="btnLogin">เข้าสู่ระบบ</button>
+  <div id="msg" class="error"></div>
+</div>
+
+<script>
+const SUPABASE_URL = "https://velbtupsfspvfqhytaci.supabase.co";  // <-- แก้เป็นของคุณ
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZlbGJ0dXBzZnNwdmZxaHl0YWNpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTkxNDYyMjQsImV4cCI6MjA3NDcyMjIyNH0.ZVGvKh1ytyKUFH4b8T4ItVPXpFPSI57DXhuy89uVxKk";                // <-- แก้เป็นของคุณ
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+document.getElementById("btnLogin").addEventListener("click", async()=>{
+  const email = document.getElementById("email").value.trim();
+  const password = document.getElementById("password").value.trim();
+  const msg = document.getElementById("msg");
+  msg.textContent = "";
+  if(!email || !password){ msg.textContent="กรอกอีเมลและรหัสผ่าน"; return; }
+
+  const { data, error } = await sb.auth.signInWithPassword({ email, password });
+  if(error){ msg.textContent = "เข้าสู่ระบบไม่สำเร็จ: "+error.message; return; }
+
+  // บันทึก token
+  localStorage.setItem("sb-token", data.session.access_token);
+  location.href = "admin.html";
+});
+</script>
+</body>
+</html>
